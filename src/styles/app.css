@@ -1,0 +1,79 @@
+/* ── Reset & base ───────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8f8f6; color: #1a1a18; }
+
+/* ── Layout ─────────────────────────────────────────────── */
+.app { min-height: 100vh; display: flex; flex-direction: column; }
+.content { max-width: 960px; margin: 0 auto; width: 100%; padding: 24px 20px; flex: 1; }
+
+/* ── Topbar ─────────────────────────────────────────────── */
+.topbar { background: #fff; border-bottom: 1px solid #e8e6e0; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+.topbar-left { display: flex; align-items: center; gap: 10px; }
+.topbar-left h1 { font-size: 18px; font-weight: 600; }
+.topbar-right { display: flex; align-items: center; gap: 8px; }
+.powered-badge { font-size: 11px; background: #f0efe8; border: 1px solid #d8d6d0; border-radius: 20px; padding: 3px 10px; color: #666; }
+.error-badge { font-size: 11px; background: #fff3e0; border: 1px solid #ffb74d; border-radius: 20px; padding: 3px 10px; color: #e65100; }
+.refresh-btn { border: 1px solid #d8d6d0; border-radius: 8px; background: #fff; padding: 6px 12px; font-size: 12px; cursor: pointer; color: #444; transition: background .15s; }
+.refresh-btn:hover { background: #f0efe8; }
+
+/* ── Stats ──────────────────────────────────────────────── */
+.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.stat-card { background: #fff; border: 1px solid #e8e6e0; border-radius: 12px; padding: 14px 16px; }
+.stat-label { font-size: 11px; color: #888; margin-bottom: 4px; }
+.stat-value { font-size: 22px; font-weight: 600; }
+.stat-value.green { color: #1a8f5a; }
+
+/* ── Filters ────────────────────────────────────────────── */
+.filter-bar { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.filter-group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.filter-label { font-size: 11px; color: #999; min-width: 38px; }
+.pill { border: 1px solid #dddbd4; border-radius: 20px; padding: 5px 12px; font-size: 12px; cursor: pointer; color: #666; background: transparent; transition: all .15s; }
+.pill:hover { background: #f4f3ec; color: #333; }
+.pill.active { background: #1a1a18; color: #fff; border-color: #1a1a18; font-weight: 500; }
+
+/* ── Table ──────────────────────────────────────────────── */
+.table-wrapper { background: #fff; border: 1px solid #e8e6e0; border-radius: 14px; overflow: hidden; }
+.table-header { display: grid; grid-template-columns: 2.5fr 1fr 1fr 1fr 1fr; gap: 8px; padding: 10px 16px; font-size: 11px; color: #999; font-weight: 500; letter-spacing: .04em; border-bottom: 1px solid #f0efe8; background: #fafaf8; }
+.sortable { cursor: pointer; }
+.sortable:hover, .sortable.active { color: #333; }
+.opp-row { display: grid; grid-template-columns: 2.5fr 1fr 1fr 1fr 1fr; gap: 8px; align-items: center; padding: 13px 16px; border-bottom: 1px solid #f4f3ec; cursor: pointer; transition: background .12s; }
+.opp-row:last-child { border-bottom: none; }
+.opp-row:hover { background: #fafaf8; }
+.protocol-cell { display: flex; align-items: center; gap: 10px; }
+.protocol-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.token-logo { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; object-fit: cover; }
+.protocol-name { font-size: 13px; font-weight: 500; }
+.protocol-type { font-size: 11px; color: #999; margin-top: 2px; }
+.chain-badge { display: inline-block; font-size: 10px; background: #f0efe8; border: 1px solid #dddbd4; border-radius: 6px; padding: 2px 7px; color: #555; text-transform: capitalize; }
+.apy-value { font-size: 13px; font-weight: 600; color: #1a8f5a; }
+.tvl-value { font-size: 13px; color: #666; }
+.deposit-btn { border: 1px solid #dddbd4; border-radius: 8px; background: #fff; padding: 5px 12px; font-size: 11px; cursor: pointer; color: #333; transition: all .15s; }
+.deposit-btn:hover { background: #1a1a18; color: #fff; border-color: #1a1a18; }
+.empty-state { padding: 40px; text-align: center; color: #999; font-size: 14px; }
+
+/* ── Skeleton ───────────────────────────────────────────── */
+.skeleton-row { display: grid; grid-template-columns: 2.5fr 1fr 1fr 1fr 1fr; gap: 8px; padding: 13px 16px; border-bottom: 1px solid #f4f3ec; }
+.skeleton-cell { height: 20px; background: #f0efe8; border-radius: 6px; animation: pulse 1.4s ease-in-out infinite; }
+.skeleton-cell:nth-child(2) { animation-delay: .1s; }
+.skeleton-cell:nth-child(3) { animation-delay: .2s; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+/* ── Modal ──────────────────────────────────────────────── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.modal { background: #fff; border-radius: 16px; padding: 24px; width: 420px; max-width: 90vw; }
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.modal-header h2 { font-size: 16px; font-weight: 600; }
+.close-btn { border: none; background: none; font-size: 16px; cursor: pointer; color: #999; }
+.modal-body p { font-size: 14px; color: #444; margin-bottom: 10px; line-height: 1.6; }
+.coming-soon { margin-top: 16px; font-size: 12px; color: #999; background: #f8f8f6; border-radius: 8px; padding: 10px 14px; }
+
+/* ── Footer ─────────────────────────────────────────────── */
+.footer { text-align: center; font-size: 11px; color: #bbb; padding: 16px; border-top: 1px solid #f0efe8; }
+
+/* ── Responsive ─────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .stats-row { grid-template-columns: repeat(2, 1fr); }
+  .table-header, .opp-row { grid-template-columns: 1.8fr 0.8fr 0.8fr; }
+  .table-header span:nth-child(4), .table-header span:nth-child(5),
+  .opp-row > div:nth-child(4), .opp-row > div:nth-child(5) { display: none; }
+}
