@@ -22,9 +22,6 @@ const TabNav: React.FC<Props> = ({ active, onChange, portfolioCount }) => (
         onClick={() => onChange(tab.id)}
       >
         {tab.label}
-        {tab.id === 'portfolio' && portfolioCount > 0 && (
-          <span className="tab-badge">{portfolioCount}</span>
-        )}
       </button>
     ))}
   </nav>

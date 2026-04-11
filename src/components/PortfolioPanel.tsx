@@ -107,7 +107,7 @@ const PortfolioPanel: React.FC = () => {
       </div>
 
       <div className="portfolio-table-header">
-        <span>Protocol</span>
+        <span>Vault</span>
         <span>Asset</span>
         <span>Network</span>
         <span>Balance</span>
@@ -119,7 +119,8 @@ const PortfolioPanel: React.FC = () => {
         return (
           <div key={i} className="portfolio-row" style={{ animationDelay: `${i * 0.05}s` }}>
             <div className="protocol-cell">
-              <div className="protocol-name">{pos.protocolName}</div>
+              <div className="protocol-name">{pos.vaultName || pos.protocolName}</div>
+              {pos.vaultName && <div className="protocol-type" style={{ fontSize: '11px', opacity: 0.6 }}>{pos.protocolName}</div>}
             </div>
             
             <div className="mobile-row-stat">
@@ -129,7 +130,7 @@ const PortfolioPanel: React.FC = () => {
             
             <div className="mobile-row-stat">
               <span className="mobile-row-label desktop-hide">Network</span>
-              <span className="chain-badge" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 500 }}>
                 <span className="protocol-dot" style={{ background: dotColor, width: 8, height: 8 }} />
                 {CHAIN_NAMES[pos.chainId] ?? `Chain ${pos.chainId}`}
               </span>
@@ -138,7 +139,7 @@ const PortfolioPanel: React.FC = () => {
             <div className="mobile-row-stat">
               <span className="mobile-row-label desktop-hide">Balance</span>
               <div className="portfolio-balance">
-                {(Number(pos.balanceNative) / 10 ** pos.asset.decimals).toFixed(4)}
+                {(Number(pos.balanceNative) / 10 ** (pos.asset?.decimals || 18)).toFixed(4)}
               </div>
             </div>
             

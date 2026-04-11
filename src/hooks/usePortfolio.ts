@@ -24,7 +24,20 @@ export const usePortfolio = (userAddress: string | undefined): UsePortfolioResul
     setError(null);
     try {
       const data = await getPortfolioPositions(userAddress);
-      setPositions(data);
+
+      // Merge optimistic deposits from localStorage
+      let optimisticDeposits: PortfolioPosition[] = [];
+      try {
+        const localKey = `optimistic_portfolio_${userAddress}`;
+        const localData = window.localStorage.getItem(localKey);
+        if (localData) {
+          optimisticDeposits = JSON.parse(localData);
+        }
+      } catch (e) {
+        console.warn('Failed to parse optimistic portfolio positions', e);
+      }
+
+      setPositions([...data, ...optimisticDeposits]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load portfolio');
     } finally {

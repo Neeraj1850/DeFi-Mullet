@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useAccount, useChainId } from 'wagmi';
+import { useAccount, useChainId, useBalance } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useDeposit } from '../hooks/useDeposit';
 import type { EarnVault } from '../types';
@@ -10,22 +10,31 @@ interface Props {
 }
 
 const EXPLORERS: Record<number, string> = {
-  1:     'https://etherscan.io/tx/',
-  8453:  'https://basescan.org/tx/',
+  1: 'https://etherscan.io/tx/',
+  8453: 'https://basescan.org/tx/',
   42161: 'https://arbiscan.io/tx/',
   84532: 'https://sepolia.basescan.org/tx/',
 };
 
 const DepositModal: React.FC<Props> = ({ vault, onClose }) => {
-  const { isConnected } = useAccount();
+  const { address, isConnected } = useAccount();
   const chainId = useChainId();
   const [amount, setAmount] = useState('');
   const { step, route, txHash, error, fetchQuote, execute, reset } = useDeposit(vault);
 
   const token = vault.underlyingTokens[0];
-  const isWrongChain = isConnected && chainId !== vault.chainId;
   const explorer = EXPLORERS[vault.chainId] ?? 'https://etherscan.io/tx/';
   const apy = vault.analytics.apy.total;
+
+  const { data: balanceData } = useBalance({
+    address,
+    token: token?.address as `0x${string}`,
+    chainId: vault.chainId,
+  });
+
+  const isWrongChain = isConnected && chainId !== vault.chainId;
+  const hasZeroBalance = balanceData !== undefined && balanceData.value === 0n;
+  const isZapMode = isConnected && (isWrongChain || hasZeroBalance);
 
   const quoteStep = route?.steps[0];
   const toAmount = quoteStep?.estimate?.toAmount;
@@ -71,31 +80,46 @@ const DepositModal: React.FC<Props> = ({ vault, onClose }) => {
             </div>
           )}
 
-          {isConnected && isWrongChain && (
-            <div className="wrong-chain">
-              Switch to <strong>{vault.network}</strong> (chain {vault.chainId}) in your wallet
+          {isConnected && isZapMode && (step === 'idle' || step === 'error') && (
+            <div className="omni-zap-banner">
+              <div className="zap-header">
+                <span className="zap-icon">⚡</span>
+                <strong>Omni-Zap™ Route Available</strong>
+              </div>
+              <p>
+                {isWrongChain
+                  ? `You are connected to Chain ${chainId}. Teleport native tokens into this ${vault.network} vault without manually bridging!`
+                  : `Zero ${token?.symbol} detected on ${vault.network}. Teleport your native gas token directly into the vault!`
+                }
+              </p>
             </div>
           )}
 
-          {isConnected && !isWrongChain && (
+          {isConnected && (
             <>
               {(step === 'idle' || step === 'error') && (
                 <>
-                  <div className="amount-row">
+                  <div className={`amount-row ${isZapMode ? 'zap-glow' : ''}`}>
                     <input
                       className="amount-input"
                       type="number"
                       min="0"
-                      placeholder={`Amount (${token?.symbol ?? 'tokens'})`}
+                      placeholder={isZapMode ? `Amount (Native Gas Token)` : `Amount (${token?.symbol ?? 'tokens'})`}
                       value={amount}
                       onChange={(e) => setAmount(e.target.value)}
                     />
                     <button
-                      className="btn-primary"
+                      className={`btn-primary ${isZapMode ? 'btn-zap' : ''}`}
                       disabled={!amount || parseFloat(amount) <= 0}
-                      onClick={() => fetchQuote(amount)}
+                      onClick={() => {
+                        if (isZapMode) {
+                          fetchQuote(amount, { chainId: chainId, tokenAddress: '0x0000000000000000000000000000000000000000', decimals: 18 });
+                        } else {
+                          fetchQuote(amount);
+                        }
+                      }}
                     >
-                      Preview
+                      {isZapMode ? 'Preview Zap' : 'Preview'}
                     </button>
                   </div>
                   {step === 'error' && error && (

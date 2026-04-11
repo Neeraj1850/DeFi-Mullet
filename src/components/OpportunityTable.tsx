@@ -175,6 +175,8 @@ const OpportunityTable: React.FC<Props> = ({
           <span />
         </div>
 
+        <div className="table-body">
+
         {loading
           ? Array(8).fill(0).map((_, i) => <Skeleton key={i} />)
           : vaults.map((vault, i) => (
@@ -201,6 +203,7 @@ const OpportunityTable: React.FC<Props> = ({
             </div>
           </div>
         )}
+        </div>
       </div>
     </>
   );

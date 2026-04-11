@@ -57,6 +57,7 @@ export interface EarnProtocolMeta {
 export interface PortfolioPosition {
   chainId: number;
   protocolName: string;
+  vaultName?: string;
   asset: {
     address: string;
     name: string;

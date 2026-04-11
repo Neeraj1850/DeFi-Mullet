@@ -80,7 +80,7 @@ const App: React.FC = () => {
           )}
 
           {activeTab === 'treasury' && (
-            <TreasuryTool onDeposit={setSelected} />
+            <TreasuryTool onDeposit={setSelected} vaults={vaults} loading={loading} />
           )}
 
           {activeTab === 'portfolio' && (
