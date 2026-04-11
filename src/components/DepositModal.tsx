@@ -51,7 +51,7 @@ const DepositModal: React.FC<Props> = ({ vault, onClose }) => {
             <div className="deposit-stat">
               <span>APY</span>
               <strong className="green">
-                {apy !== null ? `${(apy * 100).toFixed(2)}%` : '—'}
+                {apy !== null ? `${apy.toFixed(2)}%` : '—'}
               </strong>
             </div>
             <div className="deposit-stat">
@@ -171,7 +171,12 @@ const DepositModal: React.FC<Props> = ({ vault, onClose }) => {
 
               {step === 'success' && (
                 <div className="deposit-success">
-                  <div className="success-icon">&#10003;</div>
+                  <div className="success-icon">
+                    <svg className="success-svg" viewBox="0 0 52 52">
+                      <circle className="success-circle" cx="26" cy="26" r="25" fill="none" />
+                      <path className="success-check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8" />
+                    </svg>
+                  </div>
                   <p>Deposit successful!</p>
                   {txHash && (
                     <a

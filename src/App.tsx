@@ -35,17 +35,17 @@ const App: React.FC = () => {
 
   return (
     <div className="app">
+      {loading && <div className="global-loading" />}
       <header className="topbar">
         <div className="topbar-left">
+          <div className="lifi-logo-text">LI.FI</div>
           <h1>Yield Explorer</h1>
-          <span className="powered-badge">LI.FI Earn</span>
         </div>
         <div className="topbar-right">
           <ConnectButton />
           <button className="refresh-btn" onClick={refresh} title="Refresh data">
             &#8635;
           </button>
-          {error && <span className="error-badge" title={error}>API error</span>}
         </div>
       </header>
 
@@ -56,31 +56,37 @@ const App: React.FC = () => {
           portfolioCount={positions.length}
         />
 
-        {activeTab === 'explore' && (
-          <div className="tab-panel">
-            <StatsRow vaults={vaults} total={total} />
-            <FilterBar filters={filters} onChange={setFilters} />
-            <OpportunityTable
-              vaults={vaults}
-              loading={loading}
-              sortBy={sortBy}
-              onSortChange={setSortBy}
-              onSelect={setSelected}
-            />
+        {error && (
+          <div className="global-error-banner">
+            <span>Failed to load vaults: {error}</span>
+            <button className="btn-secondary" onClick={refresh}>Retry</button>
           </div>
         )}
 
-        {activeTab === 'treasury' && (
-          <div className="tab-panel">
+        <div className="tab-panel" key={activeTab}>
+          {activeTab === 'explore' && (
+            <>
+              <StatsRow vaults={vaults} total={total} />
+              <FilterBar filters={filters} onChange={setFilters} />
+              <OpportunityTable
+                vaults={vaults}
+                loading={loading}
+                sortBy={sortBy}
+                onSortChange={setSortBy}
+                onSelect={setSelected}
+                onClearFilters={() => setFilters({})}
+              />
+            </>
+          )}
+
+          {activeTab === 'treasury' && (
             <TreasuryTool onDeposit={setSelected} />
-          </div>
-        )}
+          )}
 
-        {activeTab === 'portfolio' && (
-          <div className="tab-panel">
+          {activeTab === 'portfolio' && (
             <PortfolioPanel />
-          </div>
-        )}
+          )}
+        </div>
 
         {selected && (
           <DepositModal
@@ -91,7 +97,10 @@ const App: React.FC = () => {
       </main>
 
       <footer className="footer">
-        Live data · LI.FI Earn API · {total} depositable vaults · Refreshes every 15 min
+        Live data · LI.FI Earn API · {total} depositable vaults · 
+        {vaults[0]?.analytics?.updatedAt 
+          ? ` Last updated: ${new Date(vaults[0].analytics.updatedAt).toLocaleTimeString()}`
+          : ' Refreshes every 15 min'}
       </footer>
     </div>
   );

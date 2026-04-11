@@ -1,48 +1,57 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { getAllVaults } from '../api/earn';
-import { MAINNET_CHAIN_IDS, TESTNET_CHAIN_IDS } from '../config/wagmi';
-import type { EarnVault, Filters, NetworkMode, SortKey } from '../types';
+import { scoreVault, gradeFilter } from '../utils/vaultScore';
+import type { EarnVault, Filters, SortKey } from '../types';
 
-interface UseVaultsResult {
+const DEFAULT_MIN_TVL = 100_000;
+
+export interface UseVaultsResult {
   vaults: EarnVault[];
   loading: boolean;
   error: string | null;
+  total: number;
   refresh: () => void;
 }
 
-export const useVaults = (
-  filters: Filters,
-  sortBy: SortKey,
-  networkMode: NetworkMode
-): UseVaultsResult => {
-  const [vaults, setVaults] = useState<EarnVault[]>([]);
+export const useVaults = (filters: Filters, sortBy: SortKey): UseVaultsResult => {
+  const [vaults, setVaults]   = useState<EarnVault[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError]     = useState<string | null>(null);
+  const [total, setTotal]     = useState(0);
+  const abortRef              = useRef<AbortController | null>(null);
 
   const fetchData = useCallback(async () => {
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
     setLoading(true);
     setError(null);
     try {
-      const data = await getAllVaults(filters, sortBy);
-
-      // Filter by network mode using chainId
-      const allowedIds = networkMode === 'mainnet' ? MAINNET_CHAIN_IDS : TESTNET_CHAIN_IDS;
-      const filtered = data.filter((v) => (allowedIds as number[]).includes(v.chainId));
+      const data = await getAllVaults(
+        { ...filters, minTvlUsd: filters.minTvlUsd ?? DEFAULT_MIN_TVL },
+        sortBy
+      );
+      const filtered = filters.minGrade
+        ? data.filter((v) => gradeFilter(scoreVault(v), filters.minGrade!))
+        : data;
 
       setVaults(filtered);
+      setTotal(filtered.length);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      if (err instanceof Error && err.name === 'AbortError') return;
+      setError(err instanceof Error ? err.message : 'Failed to fetch vaults');
     } finally {
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(filters), sortBy, networkMode]);
+  }, [JSON.stringify(filters), sortBy]);
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 60_000);
-    return () => clearInterval(interval);
+    const timer = setTimeout(() => {
+      fetchData();
+    }, 300);
+    const interval = setInterval(fetchData, 15 * 60 * 1000);
+    return () => { clearTimeout(timer); clearInterval(interval); abortRef.current?.abort(); };
   }, [fetchData]);
 
-  return { vaults, loading, error, refresh: fetchData };
+  return { vaults, loading, error, total, refresh: fetchData };
 };

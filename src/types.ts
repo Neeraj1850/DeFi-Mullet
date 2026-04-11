@@ -1,7 +1,3 @@
-// ─── Earn API types (earn.li.fi) ─────────────────────────────────────────────
-
-export type NetworkMode = 'mainnet' | 'testnet';
-
 export interface EarnToken {
   address: string;
   symbol: string;
@@ -26,26 +22,24 @@ export interface EarnVault {
   protocol: EarnProtocol;
   underlyingTokens: EarnToken[];
   lpTokens: EarnToken[];
+  rewardTokens?: EarnToken[];
   tags: string[];
   analytics: {
-    apy: {
-      base: number | null;
-      reward: number | null;
-      total: number | null;
-    };
+    apy: { base: number | null; reward: number | null; total: number | null };
     apy1d: number | null;
     apy7d: number | null;
     apy30d: number | null;
-    tvl: {
-      usd: string;
-      native: string;
-    };
+    tvl: { usd: string; native?: string };
     updatedAt: string;
   };
+  caps?: { totalCap: string; maxCap: string };
+  timeLock?: number;
+  kyc?: boolean;
   isTransactional: boolean;
   isRedeemable: boolean;
-  timeLock: number;
-  kyc: boolean;
+  depositPacks: { name: string; stepsType: string }[];
+  redeemPacks: { name: string; stepsType: string }[];
+  syncedAt: string;
 }
 
 export interface EarnChain {
@@ -79,13 +73,16 @@ export interface VaultsResponse {
   total: number;
 }
 
-// ─── UI / filter types ────────────────────────────────────────────────────────
-
 export interface Filters {
   chainId?: number | null;
   asset?: string | null;
   protocol?: string | null;
   minTvlUsd?: number | null;
+  minGrade?: 'A' | 'B' | 'C' | 'D' | 'F' | null;
 }
 
 export type SortKey = 'apy' | 'tvl';
+export type Tab = 'explore' | 'treasury' | 'portfolio';
+
+// Stablecoin symbols the Treasury tool filters on
+export const STABLECOIN_SYMBOLS = ['USDC', 'USDT', 'DAI', 'FRAX', 'LUSD', 'PYUSD', 'crvUSD', 'GHO', 'sDAI'];
