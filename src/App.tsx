@@ -1,17 +1,20 @@
 import React, { useState } from 'react';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
 import StatsRow from './components/StatsRow';
 import FilterBar from './components/FilterBar';
 import OpportunityTable from './components/OpportunityTable';
+import DepositModal from './components/DepositModal';
 import { useVaults } from './hooks/useVaults';
-import type { EarnVault, Filters, SortKey } from './types';
+import type { EarnVault, Filters, NetworkMode, SortKey } from './types';
 import './styles/app.css';
 
 const App: React.FC = () => {
   const [filters, setFilters] = useState<Filters>({});
-  const [sortBy, setSortBy]   = useState<SortKey>('apy');
+  const [sortBy, setSortBy] = useState<SortKey>('apy');
   const [selected, setSelected] = useState<EarnVault | null>(null);
+  const [networkMode, setNetworkMode] = useState<NetworkMode>('mainnet');
 
-  const { vaults, loading, error, refresh } = useVaults(filters, sortBy);
+  const { vaults, loading, error, refresh } = useVaults(filters, sortBy, networkMode);
 
   return (
     <div className="app">
@@ -21,12 +24,32 @@ const App: React.FC = () => {
           <span className="powered-badge">Powered by LI.FI Earn</span>
         </div>
         <div className="topbar-right">
-          <button className="refresh-btn" onClick={refresh}>↻ Refresh</button>
+          <div className="network-toggle">
+            <button
+              className={`toggle-btn ${networkMode === 'mainnet' ? 'active' : ''}`}
+              onClick={() => { setNetworkMode('mainnet'); setFilters({}); }}
+            >
+              Mainnet
+            </button>
+            <button
+              className={`toggle-btn ${networkMode === 'testnet' ? 'active' : ''}`}
+              onClick={() => { setNetworkMode('testnet'); setFilters({}); }}
+            >
+              Testnet
+            </button>
+          </div>
+          <ConnectButton />
+          <button className="refresh-btn" onClick={refresh}>&#8635; Refresh</button>
           {error && <span className="error-badge" title={error}>API error</span>}
         </div>
       </header>
 
       <main className="content">
+        {networkMode === 'testnet' && (
+          <div className="testnet-banner">
+            Testnet mode — using test networks only. Transactions have no real value.
+          </div>
+        )}
         <StatsRow vaults={vaults} />
         <FilterBar filters={filters} onChange={setFilters} />
         <OpportunityTable
@@ -36,27 +59,8 @@ const App: React.FC = () => {
           onSortChange={setSortBy}
           onSelect={setSelected}
         />
-
         {selected && (
-          <div className="modal-overlay" onClick={() => setSelected(null)}>
-            <div className="modal" onClick={e => e.stopPropagation()}>
-              <div className="modal-header">
-                <h2>{selected.name}</h2>
-                <button className="close-btn" onClick={() => setSelected(null)}>✕</button>
-              </div>
-              <div className="modal-body">
-                {selected.description && <p>{selected.description}</p>}
-                <p><strong>Protocol:</strong> {selected.protocol.name}</p>
-                <p><strong>Chain:</strong> {selected.network} ({selected.chainId})</p>
-                <p><strong>APY (total):</strong> {selected.analytics.apy.total !== null ? `${(selected.analytics.apy.total * 100).toFixed(2)}%` : '—'}</p>
-                <p><strong>APY (7d avg):</strong> {selected.analytics.apy7d !== null ? `${(selected.analytics.apy7d * 100).toFixed(2)}%` : '—'}</p>
-                <p><strong>TVL:</strong> ${parseFloat(selected.analytics.tvl.usd).toLocaleString()}</p>
-                <p><strong>Assets:</strong> {selected.underlyingTokens.map(t => t.symbol).join(', ')}</p>
-                <p><strong>Vault address:</strong> <code>{selected.address}</code></p>
-                <p className="coming-soon">Deposit flow in v2 — wallet connect + Composer quote coming next.</p>
-              </div>
-            </div>
-          </div>
+          <DepositModal vault={selected} onClose={() => setSelected(null)} />
         )}
       </main>
 

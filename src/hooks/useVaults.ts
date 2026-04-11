@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getAllVaults } from '../api/earn';
-import type { EarnVault, Filters, SortKey } from '../types';
+import { MAINNET_CHAIN_IDS, TESTNET_CHAIN_IDS } from '../config/wagmi';
+import type { EarnVault, Filters, NetworkMode, SortKey } from '../types';
 
 interface UseVaultsResult {
   vaults: EarnVault[];
@@ -9,7 +10,11 @@ interface UseVaultsResult {
   refresh: () => void;
 }
 
-export const useVaults = (filters: Filters, sortBy: SortKey): UseVaultsResult => {
+export const useVaults = (
+  filters: Filters,
+  sortBy: SortKey,
+  networkMode: NetworkMode
+): UseVaultsResult => {
   const [vaults, setVaults] = useState<EarnVault[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -19,14 +24,19 @@ export const useVaults = (filters: Filters, sortBy: SortKey): UseVaultsResult =>
     setError(null);
     try {
       const data = await getAllVaults(filters, sortBy);
-      setVaults(data);
+
+      // Filter by network mode using chainId
+      const allowedIds = networkMode === 'mainnet' ? MAINNET_CHAIN_IDS : TESTNET_CHAIN_IDS;
+      const filtered = data.filter((v) => (allowedIds as number[]).includes(v.chainId));
+
+      setVaults(filtered);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(filters), sortBy]);
+  }, [JSON.stringify(filters), sortBy, networkMode]);
 
   useEffect(() => {
     fetchData();

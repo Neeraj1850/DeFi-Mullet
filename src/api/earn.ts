@@ -3,7 +3,7 @@
 // Docs: https://docs.li.fi/earn/guides/api-integration
 // ─────────────────────────────────────────────────────────────────────────────
 /// <reference types="vite/client" />
-import { createConfig, getQuote } from '@lifi/sdk';
+import { getQuote } from '@lifi/sdk';
 import type {
   EarnChain,
   EarnProtocolMeta,
@@ -23,12 +23,6 @@ const earnHeaders: HeadersInit = {
   ...(API_KEY && { 'x-lifi-api-key': API_KEY }),
 };
 
-// ─── SDK init ─────────────────────────────────────────────────────────────────
-export const initLiFi = (): void => {
-  createConfig({
-    integrator: API_KEY || 'yield-explorer',
-  });
-};
 
 // ─── Vaults ───────────────────────────────────────────────────────────────────
 export const getVaults = async (

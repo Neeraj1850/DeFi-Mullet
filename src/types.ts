@@ -1,5 +1,7 @@
 // ─── Earn API types (earn.li.fi) ─────────────────────────────────────────────
 
+export type NetworkMode = 'mainnet' | 'testnet';
+
 export interface EarnToken {
   address: string;
   symbol: string;

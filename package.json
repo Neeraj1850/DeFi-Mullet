@@ -1,9 +1,13 @@
 {
   "dependencies": {
     "@lifi/sdk": "^3.0.0",
+    "@lifi/wallet-management": "^3.22.8",
+    "@rainbow-me/rainbowkit": "^2.2.10",
+    "@tanstack/react-query": "^5.97.0",
     "buffer": "^6.0.3",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "wagmi": "^2.19.5"
   },
   "devDependencies": {
     "@types/react": "^18.2.0",
