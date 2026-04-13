@@ -1,16 +1,21 @@
 import { createConfig, EVM, ChainType, getChains, config } from '@lifi/sdk';
 import { getWalletClient, switchChain } from '@wagmi/core';
-import { wagmiConfig } from './wagmi';
+import { wagmiConfig as proWagmiConfig } from './wagmi';
+import type { Config } from 'wagmi';
 
-export const initLiFi = () => {
+let _wagmiConfig: Config = proWagmiConfig;
+
+export const initLiFi = (wagmiConfig?: Config): void => {
+  if (wagmiConfig) _wagmiConfig = wagmiConfig;
+
   createConfig({
     integrator: import.meta.env.VITE_LIFI_INTEGRATOR_ID ?? 'yield-explorer',
     providers: [
       EVM({
-        getWalletClient: () => getWalletClient(wagmiConfig),
+        getWalletClient: () => getWalletClient(_wagmiConfig),
         switchChain: async (chainId) => {
-          await switchChain(wagmiConfig, { chainId: chainId as any });
-          return getWalletClient(wagmiConfig, { chainId });
+          await switchChain(_wagmiConfig, { chainId: chainId as any });
+          return getWalletClient(_wagmiConfig, { chainId });
         },
       }),
     ],
@@ -19,8 +24,7 @@ export const initLiFi = () => {
 };
 
 // Call this after init to sync LI.FI chains with wagmi
-export const syncChains = async () => {
+export const syncLiFiChains = async (): Promise<void> => {
   const chains = await getChains({ chainTypes: [ChainType.EVM] });
   config.setChains(chains);
-  return chains;
 };

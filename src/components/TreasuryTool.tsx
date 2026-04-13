@@ -26,6 +26,9 @@ const TreasuryTool: React.FC<Props> = ({ onDeposit, vaults, loading }) => {
   const chains = useChains();
   const protocols = useProtocols();
 
+  const [sortCol, setSortCol] = useState<'apy' | 'tvl'>('apy');
+  const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
+
   const stableVaults = useMemo(() => {
     return vaults.filter((v) => {
       if (!v.underlyingTokens.some((t) => STABLECOIN_SYMBOLS.includes(t.symbol))) return false;
@@ -35,23 +38,41 @@ const TreasuryTool: React.FC<Props> = ({ onDeposit, vaults, loading }) => {
       if (minGrade && !gradeFilter(scoreVault(v), minGrade)) return false;
       if (Number(v.analytics.tvl.usd) < 1_000_000) return false;
       return true;
-    }).sort((a, b) => (b.analytics.apy.total ?? 0) - (a.analytics.apy.total ?? 0));
-  }, [vaults, assetFilter, chainId, protocol, minGrade]);
+    }).sort((a, b) => {
+      let cmp = 0;
+      if (sortCol === 'tvl') cmp = Number(b.analytics.tvl.usd) - Number(a.analytics.tvl.usd);
+      else cmp = (b.analytics.apy.total ?? 0) - (a.analytics.apy.total ?? 0);
+      return sortDir === 'desc' ? cmp : -cmp;
+    });
+  }, [vaults, assetFilter, chainId, protocol, minGrade, sortCol, sortDir]);
 
   const amount = parseFloat(capital) || 0;
-  const top5 = stableVaults.slice(0, 5);
   const bestVault = stableVaults[0];
   const bestAPY = bestVault?.analytics.apy.total ?? null;
 
   const availableAssets = useMemo(() => {
     const seen = new Set<string>();
-    stableVaults.forEach((v) =>
+    vaults.forEach((v) =>
       v.underlyingTokens.forEach((t) => {
         if (STABLECOIN_SYMBOLS.includes(t.symbol)) seen.add(t.symbol);
       })
     );
     return Array.from(seen).sort();
-  }, [stableVaults]);
+  }, [vaults]);
+
+  const availableChains = useMemo(() => {
+    const map = new Map<number, string>();
+    vaults.forEach(v => map.set(v.chainId, v.network));
+    return Array.from(map.entries()).map(([id, name]) => ({ chainId: id, name }));
+  }, [vaults]);
+
+  const availableProtocols = useMemo(() => {
+    const map = new Map<string, string>();
+    vaults.forEach(v => {
+      if (v.protocol.logoUri) map.set(v.protocol.name, v.protocol.logoUri);
+    });
+    return Array.from(map.entries()).map(([name, logoUri]) => ({ name, logoUri }));
+  }, [vaults]);
 
   const getDeltaBadge = (apy: number | null, bestApy: number | null) => {
     if (apy == null || bestApy == null) return null;
@@ -63,8 +84,8 @@ const TreasuryTool: React.FC<Props> = ({ onDeposit, vaults, loading }) => {
   };
 
   const assetOptions: Option[] = availableAssets.map((sym) => ({ label: sym, value: sym }));
-  const chainOptions: Option[] = chains.map(c => ({ label: c.name, value: c.chainId }));
-  const protocolOptions: Option[] = protocols.map(p => ({ label: p.name, value: p.name, icon: p.logoUri }));
+  const chainOptions: Option[] = availableChains.map(c => ({ label: c.name, value: c.chainId }));
+  const protocolOptions: Option[] = availableProtocols.map(p => ({ label: p.name, value: p.name, icon: p.logoUri }));
   const gradeOptions: Option[] = GRADES.map(g => ({ label: `Grade ${g}+`, value: g }));
 
   return (
@@ -128,9 +149,27 @@ const TreasuryTool: React.FC<Props> = ({ onDeposit, vaults, loading }) => {
       <div className="table-wrapper">
         <div className="table-header treasury-grid" style={{ gridTemplateColumns: amount > 0 ? '2.5fr 1fr 1fr 1fr 1.5fr 1fr' : '2.5fr 1fr 1fr 1fr 1fr' }}>
           <span>Vault</span>
-          <span style={{ textAlign: 'center' }}>APY</span>
+          <span
+            className={`sortable ${sortCol === 'apy' ? 'active' : ''}`}
+            style={{ textAlign: 'center', justifyContent: 'center' }}
+            onClick={() => {
+              if (sortCol === 'apy') setSortDir(d => d === 'desc' ? 'asc' : 'desc');
+              else { setSortCol('apy'); setSortDir('desc'); }
+            }}
+          >
+            APY {sortCol === 'apy' && <span className={`sort-arrow ${sortDir === 'asc' ? 'up' : ''}`}>↓</span>}
+          </span>
           <span style={{ textAlign: 'center' }}>vs best</span>
-          <span style={{ textAlign: 'center' }}>TVL</span>
+          <span
+            className={`sortable ${sortCol === 'tvl' ? 'active' : ''}`}
+            style={{ textAlign: 'center', justifyContent: 'center' }}
+            onClick={() => {
+              if (sortCol === 'tvl') setSortDir(d => d === 'desc' ? 'asc' : 'desc');
+              else { setSortCol('tvl'); setSortDir('desc'); }
+            }}
+          >
+            TVL {sortCol === 'tvl' && <span className={`sort-arrow ${sortDir === 'asc' ? 'up' : ''}`}>↓</span>}
+          </span>
           {amount > 0 && <span style={{ textAlign: 'center' }}>Projected yield</span>}
           <span style={{ textAlign: 'center' }} />
         </div>
@@ -142,68 +181,73 @@ const TreasuryTool: React.FC<Props> = ({ onDeposit, vaults, loading }) => {
                 {[1, 2, 3, 4, 5, 6].map((j) => <div key={j} className="skeleton-cell" />)}
               </div>
             ))
-            : stableVaults.map((vault, i) => (
-              <div key={vault.slug} className="opp-row treasury-grid" style={{ animationDelay: `${i * 0.05}s`, gridTemplateColumns: amount > 0 ? '2.5fr 1fr 1fr 1fr 1.5fr 1fr' : '2.5fr 1fr 1fr 1fr 1fr' }}>
-                <div className="protocol-cell">
-                  {vault.protocol.logoUri && (
-                    <img src={vault.protocol.logoUri} alt={vault.protocol.name} className="token-logo" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                  )}
-                  <div style={{ minWidth: 0 }}>
-                    <div className="protocol-name">{vault.name}</div>
-                    <div className="protocol-type">
-                      {vault.protocol.name}
-                      <span style={{ opacity: 0.4 }}>·</span>
-                      {vault.underlyingTokens.map((t) => t.symbol).join(', ')}
-                      {vault.timeLock === 0 && <span className="tag-pill">instant</span>}
-                      {(vault.timeLock ?? 0) > 0 && (
-                        <span className="tag-pill warn">
-                          {Math.floor((vault.timeLock ?? 0) / 86400)}d lock
-                        </span>
-                      )}
-                    </div>
-                  </div>
+            : stableVaults.length === 0 ? (
+              <div className="portfolio-empty treasury-empty" style={{ margin: '20px', padding: '60px 20px' }}>
+                <div className="portfolio-empty-pulse">
+                  <div className="portfolio-empty-pulse-inner" style={{ background: '#ccc' }} />
                 </div>
-
-                <div className="mobile-row-stat" style={{ textAlign: 'center' }}>
-                  <span className="mobile-row-label desktop-hide">APY</span>
-                  <div className="apy-value">{fmtAPY(vault.analytics.apy.total)}</div>
-                </div>
-
-                <div className="mobile-row-stat desktop-only" style={{ textAlign: 'center' }}>
-                  <span className="mobile-row-label desktop-hide">vs best</span>
-                  {getDeltaBadge(vault.analytics.apy.total, bestAPY)}
-                </div>
-
-                <div className="mobile-row-stat" style={{ textAlign: 'center' }}>
-                  <span className="mobile-row-label desktop-hide">TVL</span>
-                  <div className="tvl-value">{fmtTVL(vault.analytics.tvl.usd)}</div>
-                </div>
-
-                {amount > 0 && (
-                  <div className="mobile-row-stat" style={{ textAlign: 'center' }}>
-                    <span className="mobile-row-label desktop-hide">Projected</span>
-                    <div className="projected-yield" style={{ fontFamily: 'var(--font-mono)', fontSize: '13px' }}>
-                      {fmtYield(vault.analytics.apy.total, amount)}
-                    </div>
-                  </div>
-                )}
-
-                <div className="mobile-row-stat action-cell" style={{ display: 'flex', justifyContent: 'center' }}>
-                  {vault.isTransactional ? (
-                    <button className="deposit-btn" onClick={() => onDeposit(vault)}>
-                      <span style={{ position: 'relative', zIndex: 1 }}>Deposit</span>
-                    </button>
-                  ) : (
-                    <span className="no-deposit-badge">View only</span>
-                  )}
-                </div>
+                <h3>No vaults match criteria</h3>
+                <p>Try adjusting your protocol or chain filters to see available opportunities.</p>
               </div>
-            ))
-          }
+            )
+              : stableVaults.map((vault, i) => (
+                <div key={vault.slug} className="opp-row treasury-grid" style={{ animationDelay: `${i * 0.05}s`, gridTemplateColumns: amount > 0 ? '2.5fr 1fr 1fr 1fr 1.5fr 1fr' : '2.5fr 1fr 1fr 1fr 1fr' }}>
+                  <div className="protocol-cell">
+                    {vault.protocol.logoUri && (
+                      <img src={vault.protocol.logoUri} alt={vault.protocol.name} className="token-logo" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                    )}
+                    <div style={{ minWidth: 0 }}>
+                      <div className="protocol-name">{vault.name}</div>
+                      <div className="protocol-type">
+                        {vault.protocol.name}
+                        <span style={{ opacity: 0.4 }}>·</span>
+                        {vault.underlyingTokens.map((t) => t.symbol).join(', ')}
+                        {vault.timeLock === 0 && <span className="tag-pill">instant</span>}
+                        {(vault.timeLock ?? 0) > 0 && (
+                          <span className="tag-pill warn">
+                            {Math.floor((vault.timeLock ?? 0) / 86400)}d lock
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
 
-          {!loading && stableVaults.length === 0 && (
-            <div className="empty-state">No stablecoin vaults found.</div>
-          )}
+                  <div className="mobile-row-stat" style={{ textAlign: 'center' }}>
+                    <span className="mobile-row-label desktop-hide">APY</span>
+                    <div className="apy-value">{fmtAPY(vault.analytics.apy.total)}</div>
+                  </div>
+
+                  <div className="mobile-row-stat desktop-only" style={{ textAlign: 'center' }}>
+                    <span className="mobile-row-label desktop-hide">vs best</span>
+                    {getDeltaBadge(vault.analytics.apy.total, bestAPY)}
+                  </div>
+
+                  <div className="mobile-row-stat" style={{ textAlign: 'center' }}>
+                    <span className="mobile-row-label desktop-hide">TVL</span>
+                    <div className="tvl-value">{fmtTVL(vault.analytics.tvl.usd)}</div>
+                  </div>
+
+                  {amount > 0 && (
+                    <div className="mobile-row-stat" style={{ textAlign: 'center' }}>
+                      <span className="mobile-row-label desktop-hide">Projected</span>
+                      <div className="projected-yield" style={{ fontFamily: 'var(--font-mono)', fontSize: '13px' }}>
+                        {fmtYield(vault.analytics.apy.total, amount)}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mobile-row-stat action-cell" style={{ display: 'flex', justifyContent: 'center' }}>
+                    {vault.isTransactional ? (
+                      <button className="deposit-btn" onClick={() => onDeposit(vault)}>
+                        <span style={{ position: 'relative', zIndex: 1 }}>Deposit</span>
+                      </button>
+                    ) : (
+                      <span className="no-deposit-badge">View only</span>
+                    )}
+                  </div>
+                </div>
+              ))
+          }
         </div>
       </div>
     </div>

@@ -13,7 +13,7 @@ export interface UseVaultsResult {
   refresh: () => void;
 }
 
-export const useVaults = (filters: Filters, sortBy: SortKey): UseVaultsResult => {
+export const useVaults = (filters: Filters, sortBy: SortKey, sortDir: 'desc'|'asc'): UseVaultsResult => {
   const [vaults, setVaults]   = useState<EarnVault[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
@@ -26,16 +26,25 @@ export const useVaults = (filters: Filters, sortBy: SortKey): UseVaultsResult =>
     setLoading(true);
     setError(null);
     try {
+      const apiSortKey = sortBy === 'tvl' ? 'tvl' : 'apy'; // API only expects apy or tvl
       const data = await getAllVaults(
         { ...filters, minTvlUsd: filters.minTvlUsd ?? DEFAULT_MIN_TVL },
-        sortBy
+        apiSortKey
       );
       const filtered = filters.minGrade
         ? data.filter((v) => gradeFilter(scoreVault(v), filters.minGrade!))
         : data;
 
-      setVaults(filtered);
-      setTotal(filtered.length);
+      const sorted = filtered.sort((a, b) => {
+        let cmp = 0;
+        if (sortBy === 'score') cmp = scoreVault(b).total - scoreVault(a).total;
+        else if (sortBy === 'tvl') cmp = Number(b.analytics.tvl.usd) - Number(a.analytics.tvl.usd);
+        else cmp = (b.analytics.apy.total ?? 0) - (a.analytics.apy.total ?? 0);
+        return sortDir === 'desc' ? cmp : -cmp;
+      });
+
+      setVaults(sorted);
+      setTotal(sorted.length);
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return;
       setError(err instanceof Error ? err.message : 'Failed to fetch vaults');
@@ -43,7 +52,7 @@ export const useVaults = (filters: Filters, sortBy: SortKey): UseVaultsResult =>
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(filters), sortBy]);
+  }, [JSON.stringify(filters), sortBy, sortDir]);
 
   useEffect(() => {
     const timer = setTimeout(() => {

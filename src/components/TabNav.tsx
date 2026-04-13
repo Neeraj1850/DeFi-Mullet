@@ -22,6 +22,20 @@ const TabNav: React.FC<Props> = ({ active, onChange, portfolioCount }) => (
         onClick={() => onChange(tab.id)}
       >
         {tab.label}
+        {tab.id === 'portfolio' && portfolioCount > 0 && (
+          <span style={{
+            marginLeft: 6,
+            background: active === tab.id ? 'rgba(255,255,255,0.2)' : 'var(--ink)',
+            color: '#fff',
+            fontSize: 10,
+            fontWeight: 700,
+            padding: '1px 6px',
+            borderRadius: 10,
+            verticalAlign: 'middle',
+          }}>
+            {portfolioCount}
+          </span>
+        )}
       </button>
     ))}
   </nav>

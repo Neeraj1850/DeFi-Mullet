@@ -1,44 +1,27 @@
 /// <reference types="vite/client" />
-import { createConfig, EVM, getChains as sdkGetChains, config, getQuote } from '@lifi/sdk';
+import { getQuote } from '@lifi/sdk';
 import type {
   EarnChain, EarnProtocolMeta, EarnVault,
   Filters, PortfolioPosition, VaultsResponse,
 } from '../types';
 
-const EARN_BASE = import.meta.env.DEV
+/* ─── Base URL (proxied in dev, direct in prod) ────────────────── */
+export const EARN_BASE = import.meta.env.DEV
   ? '/earn-api/v1/earn'
   : 'https://earn.li.fi/v1/earn';
+
 const API_KEY = import.meta.env.VITE_LIFI_INTEGRATOR_ID ?? '';
 
-const earnHeaders: HeadersInit = {
+export const earnHeaders: HeadersInit = {
   'Content-Type': 'application/json',
   ...(API_KEY && { 'x-lifi-api-key': API_KEY }),
 };
 
-// Uses SDK's getChains (aliased to avoid name clash with our local getChains)
-export const syncLiFiChains = async (): Promise<void> => {
-  const chains = await sdkGetChains();
-  config.setChains(chains);
-};
-
-export const initLiFi = (): void => {
-  createConfig({
-    integrator: API_KEY || 'yield-explorer',
-    providers: [
-      EVM({
-        getWalletClient: () => import('@wagmi/core').then(({ getWalletClient }) =>
-          getWalletClient(import('../config/wagmi').then(m => m.wagmiConfig) as any)
-        ),
-      }),
-    ],
-    preloadChains: false,
-  });
-};
-
+/* ─── Vault endpoints ─────────────────────────────────────────── */
 export const getVaults = async (
   filters: Filters = {},
   sortBy: 'apy' | 'tvl' = 'apy',
-  limit = 50,
+  limit = 100,
   cursor?: string
 ): Promise<VaultsResponse> => {
   const params = new URLSearchParams();
@@ -49,6 +32,7 @@ export const getVaults = async (
   if (cursor) params.set('cursor', cursor);
   params.set('sortBy', sortBy);
   params.set('limit', String(limit));
+
   const res = await fetch(`${EARN_BASE}/vaults?${params}`, { headers: earnHeaders });
   if (!res.ok) throw new Error(`Vaults API error: ${res.status}`);
   return res.json();
@@ -66,10 +50,9 @@ export const getAllVaults = async (
     const clean = page.data.filter((v: EarnVault) => {
       if (!v.isTransactional) return false;
       const apy = v.analytics.apy.total;
-      // Filter out null APY and anything above 500% — almost certainly bad data
-      if (apy === null) return true; // keep nulls, display as —
-      if (apy > 500) return false;   // anything above 500% is bad pipeline data
-      if (apy < 0) return false;     // negative APY vaults not useful
+      if (apy === null) return true;  // keep null-APY vaults — show as "—"
+      if (apy > 100) return false; // bad pipeline data
+      if (apy < 0) return false; // negative APY not useful
       return true;
     });
     all.push(...clean);
@@ -85,6 +68,7 @@ export const getVaultById = async (chainId: number, address: string): Promise<Ea
   return res.json();
 };
 
+/* ─── Chain & Protocol metadata ───────────────────────────────── */
 export const getEarnChains = async (): Promise<EarnChain[]> => {
   const res = await fetch(`${EARN_BASE}/chains`, { headers: earnHeaders });
   if (!res.ok) throw new Error(`Chains API error: ${res.status}`);
@@ -97,24 +81,64 @@ export const getEarnProtocols = async (): Promise<EarnProtocolMeta[]> => {
   return res.json();
 };
 
+/* ─── Portfolio positions ─────────────────────────────────────── */
 export const getPortfolioPositions = async (userAddress: string): Promise<PortfolioPosition[]> => {
   const res = await fetch(`${EARN_BASE}/portfolio/${userAddress}/positions`, { headers: earnHeaders });
   if (!res.ok) throw new Error(`Portfolio API error: ${res.status}`);
   const data = await res.json();
-  return data.positions ?? [];
+
+  // Normalise API shape — positions may be in data.positions or data directly
+  const raw: any[] = data.positions ?? (Array.isArray(data) ? data : []);
+
+  return raw.map((p: any): PortfolioPosition => {
+    // Discover vault receipt-token address across all known LI.FI API field shapes
+    const vaultAddress =
+      p.vaultAddress ??
+      p.vault ??
+      p.poolAddress ??
+      p.pool ??
+      p.lpToken ??
+      p.lpTokenAddress ??
+      p.shareToken ??
+      p.receiptToken ??
+      p.positionAddress ??
+      p.address ??         // some responses use bare 'address'
+      undefined;
+
+    // balanceNative may arrive as:
+    //   (a) a decimal human-readable string: "0.000997"  ← raw token units need parseUnits
+    //   (b) an integer wei-like string:      "997"       ← ready to use
+    // We store it as-is; useWithdraw.ts is responsible for converting if decimal.
+    const balanceNative = String(p.balanceNative ?? p.balance_native ?? p.amount ?? '0');
+
+    return {
+      chainId:      p.chainId      ?? p.chain_id ?? 0,
+      protocolName: p.protocolName ?? p.protocol  ?? 'Unknown',
+      vaultName:    p.vaultName    ?? p.name      ?? undefined,
+      vaultAddress,
+      asset: {
+        address:  p.asset?.address  ?? p.tokenAddress ?? p.underlyingToken?.address ?? '0x0000000000000000000000000000000000000000',
+        symbol:   p.asset?.symbol   ?? p.symbol        ?? p.underlyingToken?.symbol  ?? 'UNK',
+        decimals: p.asset?.decimals ?? p.decimals       ?? p.underlyingToken?.decimals ?? 18,
+        name:     p.asset?.name     ?? p.tokenName      ?? p.underlyingToken?.name     ?? undefined,
+      },
+      balanceUsd:    String(p.balanceUsd    ?? p.balance_usd    ?? p.amountUsd ?? '0'),
+      balanceNative,
+      apy: typeof p.apy === 'number' ? p.apy : undefined,
+    };
+  });
 };
 
-interface VaultQuoteParams {
+/* ─── Quote helper (used by deposit + withdraw hooks) ────────── */
+export const getVaultQuote = (params: {
   fromChain: string | number;
   toChain: string | number;
   fromToken: string;
   toToken: string;
   fromAmount: string;
   fromAddress: string;
-}
-
-export const getVaultQuote = async (params: VaultQuoteParams) => {
-  return getQuote({
+}) =>
+  getQuote({
     fromChain: params.fromChain,
     toChain: params.toChain,
     fromToken: params.fromToken,
@@ -123,4 +147,3 @@ export const getVaultQuote = async (params: VaultQuoteParams) => {
     fromAddress: params.fromAddress,
     toAddress: params.fromAddress,
   });
-};

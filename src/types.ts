@@ -58,14 +58,32 @@ export interface PortfolioPosition {
   chainId: number;
   protocolName: string;
   vaultName?: string;
+  /** The vault receipt/LP token that the user holds in the position. */
+  vaultAddress?: string;
   asset: {
     address: string;
-    name: string;
+    name?: string;
     symbol: string;
     decimals: number;
   };
   balanceUsd: string;
   balanceNative: string;
+  apy?: number;
+}
+
+export interface WalletToken {
+  address: string;
+  symbol: string;
+  decimals: number;
+  chainId: number;
+  name?: string;
+  logoURI?: string;
+}
+
+export interface PortfolioBalance<T> {
+  token: T;
+  amount: string;
+  amountUsd: string;
 }
 
 export interface VaultsResponse {
@@ -82,7 +100,8 @@ export interface Filters {
   minGrade?: 'A' | 'B' | 'C' | 'D' | 'F' | null;
 }
 
-export type SortKey = 'apy' | 'tvl';
+export type SortKey = 'apy' | 'tvl' | 'score';
+export type SortDir = 'desc' | 'asc';
 export type Tab = 'explore' | 'treasury' | 'portfolio';
 
 // Stablecoin symbols the Treasury tool filters on

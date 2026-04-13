@@ -7,6 +7,7 @@ interface Props {
   vaults: EarnVault[];
   loading: boolean;
   sortBy: SortKey;
+  sortDir: 'desc' | 'asc';
   onSortChange: (k: SortKey) => void;
   onSelect: (v: EarnVault) => void;
   onClearFilters?: () => void;
@@ -125,7 +126,7 @@ const OpportunityRow = React.memo(({
 });
 
 const OpportunityTable: React.FC<Props> = ({
-  vaults, loading, sortBy, onSortChange, onSelect, onClearFilters
+  vaults, loading, sortBy, sortDir, onSortChange, onSelect, onClearFilters
 }) => {
   const bestVault = useMemo(() => {
     if (vaults.length === 0) return null;
@@ -162,16 +163,21 @@ const OpportunityTable: React.FC<Props> = ({
             className={`sortable ${sortBy === 'apy' ? 'active' : ''}`}
             onClick={() => onSortChange('apy')}
           >
-            APY <span className={`sort-arrow ${sortBy === 'apy' ? 'up' : ''}`}>↓</span>
+            APY {sortBy === 'apy' && <span className={`sort-arrow ${sortDir === 'asc' ? 'up' : ''}`}>↓</span>}
           </span>
           <span>30d avg</span>
           <span
             className={`sortable ${sortBy === 'tvl' ? 'active' : ''}`}
             onClick={() => onSortChange('tvl')}
           >
-            TVL <span className={`sort-arrow ${sortBy === 'tvl' ? 'up' : ''}`}>↓</span>
+            TVL {sortBy === 'tvl' && <span className={`sort-arrow ${sortDir === 'asc' ? 'up' : ''}`}>↓</span>}
           </span>
-          <span>Score</span>
+          <span
+            className={`sortable ${sortBy === 'score' ? 'active' : ''}`}
+            onClick={() => onSortChange('score')}
+          >
+            Score {sortBy === 'score' && <span className={`sort-arrow ${sortDir === 'asc' ? 'up' : ''}`}>↓</span>}
+          </span>
           <span />
         </div>
 

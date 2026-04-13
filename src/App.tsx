@@ -1,59 +1,61 @@
 import React, { useState, useEffect } from 'react';
-import { ConnectButton } from '@rainbow-me/rainbowkit';
 import StatsRow from './components/StatsRow';
 import FilterBar from './components/FilterBar';
 import OpportunityTable from './components/OpportunityTable';
 import DepositModal from './components/DepositModal';
 import TabNav from './components/TabNav';
 import TreasuryTool from './components/TreasuryTool';
-import PortfolioPanel from './components/PortfolioPanel';
+import { ProDashboard } from './components/portfolio/ProDashboard';
 import { useVaults } from './hooks/useVaults';
-import { usePortfolio } from './hooks/usePortfolio';
-import { syncLiFiChains } from './api/earn';
-import { useAccount } from 'wagmi';
-import type { EarnVault, Filters, SortKey, Tab } from './types';
+import { usePortfolioContext } from './hooks/usePortfolioContext';
+import { syncLiFiChains } from './config/lifi';
+import type { EarnVault, Filters, SortKey, SortDir, Tab } from './types';
 import './styles/app.css';
+import Navbar from './components/Navbar';
 
-const App: React.FC = () => {
+interface Props {
+  onToggleMode?: () => void;
+}
+
+const App: React.FC<Props> = ({ onToggleMode }) => {
   const [activeTab, setActiveTab] = useState<Tab>('explore');
   const [filters, setFilters]     = useState<Filters>({});
   const [sortBy, setSortBy]       = useState<SortKey>('apy');
+  const [sortDir, setSortDir]     = useState<SortDir>('desc');
   const [selected, setSelected]   = useState<EarnVault | null>(null);
 
-  const { address } = useAccount();
-  const { vaults, loading, error, total, refresh } = useVaults(filters, sortBy);
-  const { positions } = usePortfolio(address);
+  const { vaults, loading, error, total, refresh } = useVaults(filters, sortBy, sortDir);
+  const { summary } = usePortfolioContext();
+
+  const handleSortChange = (key: SortKey) => {
+    if (sortBy === key) {
+      setSortDir(d => d === 'desc' ? 'asc' : 'desc');
+    } else {
+      setSortBy(key);
+      setSortDir('desc');
+    }
+  };
 
   useEffect(() => {
-    syncLiFiChains().catch(console.error);
+    syncLiFiChains().catch(() => {});
   }, []);
 
   const handleTabChange = (tab: Tab) => {
     setActiveTab(tab);
-    setFilters({});
+    // Only reset filters when leaving explore tab
+    if (tab !== 'explore') setFilters({});
   };
 
   return (
     <div className="app">
       {loading && <div className="global-loading" />}
-      <header className="topbar">
-        <div className="topbar-left">
-          <div className="lifi-logo-text">LI.FI</div>
-          <h1>Yield Explorer</h1>
-        </div>
-        <div className="topbar-right">
-          <ConnectButton />
-          <button className="refresh-btn" onClick={refresh} title="Refresh data">
-            &#8635;
-          </button>
-        </div>
-      </header>
+      <Navbar mode="pro" onToggleMode={onToggleMode} onRefresh={refresh} />
 
       <main className="content">
         <TabNav
           active={activeTab}
           onChange={handleTabChange}
-          portfolioCount={positions.length}
+          portfolioCount={summary.activePositionCount}
         />
 
         {error && (
@@ -63,29 +65,38 @@ const App: React.FC = () => {
           </div>
         )}
 
-        <div className="tab-panel" key={activeTab}>
-          {activeTab === 'explore' && (
-            <>
-              <StatsRow vaults={vaults} total={total} />
-              <FilterBar filters={filters} onChange={setFilters} />
-              <OpportunityTable
-                vaults={vaults}
-                loading={loading}
-                sortBy={sortBy}
-                onSortChange={setSortBy}
-                onSelect={setSelected}
-                onClearFilters={() => setFilters({})}
-              />
-            </>
-          )}
+        {/* ── Explore tab ──────────────────────────────────────── */}
+        {/* Mounted/unmounted so filter state resets cleanly on leave */}
+        {activeTab === 'explore' && (
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+            <StatsRow vaults={vaults} total={total} />
+            <FilterBar filters={filters} onChange={setFilters} />
+            <OpportunityTable
+              vaults={vaults}
+              loading={loading}
+              sortBy={sortBy}
+              sortDir={sortDir}
+              onSortChange={handleSortChange}
+              onSelect={setSelected}
+              onClearFilters={() => setFilters({})}
+            />
+          </div>
+        )}
 
-          {activeTab === 'treasury' && (
+        {/* ── Treasury tab ─────────────────────────────────────── */}
+        {activeTab === 'treasury' && (
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
             <TreasuryTool onDeposit={setSelected} vaults={vaults} loading={loading} />
-          )}
+          </div>
+        )}
 
-          {activeTab === 'portfolio' && (
-            <PortfolioPanel />
-          )}
+        {/* ── Portfolio tab — stays mounted, CSS-toggled ──────── */}
+        {/* Keeps provider state alive so no re-fetch on tab switch */}
+        <div
+          className="tab-panel"
+          style={{ display: activeTab === 'portfolio' ? 'flex' : 'none' }}
+        >
+          <ProDashboard />
         </div>
 
         {selected && (
@@ -97,10 +108,10 @@ const App: React.FC = () => {
       </main>
 
       <footer className="footer">
-        Live data · LI.FI Earn API · {total} depositable vaults · 
-        {vaults[0]?.analytics?.updatedAt 
-          ? ` Last updated: ${new Date(vaults[0].analytics.updatedAt).toLocaleTimeString()}`
-          : ' Refreshes every 15 min'}
+        Live data · LI.FI Earn API · {total} vaults ·{' '}
+        {vaults[0]?.analytics?.updatedAt
+          ? `Updated ${new Date(vaults[0].analytics.updatedAt).toLocaleTimeString()}`
+          : 'Refreshes every 15 min'}
       </footer>
     </div>
   );
