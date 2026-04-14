@@ -24,58 +24,89 @@ interface WithdrawState {
 }
 
 /**
- * Convert a balance string that may be decimal ("0.000997") or integer ("997")
- * into a raw BigInt-compatible string in the token's smallest unit.
+ * Convert balanceNative (raw integer atomic units per LI.FI API docs) to a
+ * validated fromAmount string for getQuote.
  *
- * LI.FI's portfolio API returns `balanceNative` as a human-readable decimal
- * (e.g. "0.000997" USDC), but getQuote() requires `fromAmount` as an integer
- * string in atomic units (e.g. "997" for USDC with 6 decimals).
+ * API docs: balanceNative = "1523450000" means 1523.45 USDC (6 decimals)
+ * i.e. it is already in atomic units — return as-is for integers.
+ * If the value has a decimal point (legacy/unexpected), parseUnits it.
  */
 function toRawAmount(balance: string, decimals: number): string {
   if (!balance || balance === '0') return '0';
 
-  // If it already looks like a large integer (no decimal point, >6 chars), use as-is
+  // Integer → already raw atomic units, return as-is (correct per API docs)
   if (!balance.includes('.')) {
     return balance;
   }
 
-  // Decimal string → parse into raw units via viem
+  // Decimal string (unexpected) → convert to raw units
   try {
-    return parseUnits(balance as `${number}`, decimals).toString();
-  } catch {
-    // Fallback: manual multiplication with rounding
     const [int, frac = ''] = balance.split('.');
-    const fracPadded = (frac + '0'.repeat(decimals)).slice(0, decimals);
-    const raw = BigInt(int) * BigInt(10 ** decimals) + BigInt(fracPadded);
-    return raw.toString();
+    const fracTrunc = frac.slice(0, decimals).padEnd(decimals, '0');
+    return parseUnits(`${int}.${fracTrunc}` as `${number}`, decimals).toString();
+  } catch {
+    const [int] = balance.split('.');
+    return (BigInt(int || '0') * BigInt(10 ** decimals)).toString();
   }
 }
 
 /**
- * When the portfolio API doesn't return a distinct vault address (vaultAddress
- * equals the underlying asset address), we try to look it up from the
- * LI.FI Earn vaults API by matching chain + underlying token.
+ * Resolve the vault receipt-token address from the LI.FI Earn vaults API.
+ *
+ * Strategy:
+ * 1. Query vaults for the given chain, optionally filtered by protocol name.
+ * 2. Find the vault whose underlyingTokens match the position's asset address.
+ * 3. Return the vault's lpToken (receipt/share token) if present, otherwise the vault address itself.
  */
 async function resolveVaultAddress(
   chainId: number,
   underlyingAddress: string,
+  protocolHint?: string,
 ): Promise<string | null> {
   try {
     const params = new URLSearchParams({
       chainId: String(chainId),
-      limit: '5',
+      limit: '50',
     });
+    if (protocolHint) params.set('protocol', protocolHint);
+
     const res = await fetch(`${EARN_BASE}/vaults?${params}`, { headers: earnHeaders });
     if (!res.ok) return null;
     const data = await res.json();
-    const vaults: any[] = data.data ?? [];
-    // Find a vault whose underlyingToken matches
-    const match = vaults.find((v: any) =>
+    let vaults: any[] = data.data ?? [];
+
+    // Find a vault whose underlyingToken matches our position asset
+    let match = vaults.find((v: any) =>
       v.underlyingTokens?.some((t: any) =>
         t.address?.toLowerCase() === underlyingAddress.toLowerCase()
-      ),
+      )
     );
-    return match?.address ?? null;
+
+    // If no match with protocol filter, retry without it
+    if (!match && protocolHint) {
+      const fallbackParams = new URLSearchParams({ chainId: String(chainId), limit: '100' });
+      const fallbackRes = await fetch(`${EARN_BASE}/vaults?${fallbackParams}`, { headers: earnHeaders });
+      if (fallbackRes.ok) {
+        const fallbackData = await fallbackRes.json();
+        vaults = fallbackData.data ?? [];
+        match = vaults.find((v: any) =>
+          v.underlyingTokens?.some((t: any) =>
+            t.address?.toLowerCase() === underlyingAddress.toLowerCase()
+          )
+        );
+      }
+    }
+
+    if (!match) return null;
+
+    // Prefer the LP/receipt token over the vault address itself
+    const receiptToken =
+      match.lpTokens?.[0]?.address ??
+      match.shareToken?.address ??
+      match.receiptToken?.address ??
+      match.address;   // vault address IS the receipt token for some protocols
+
+    return receiptToken ?? null;
   } catch {
     return null;
   }
@@ -108,7 +139,7 @@ export const useWithdraw = () => {
     setState({ step: 'quoting', route: null, txHash: null, explorerUrl: null, error: null, toAmountUSD: null });
 
     try {
-      // ── 1. Resolve raw fromAmount (always integer wei-like string) ────────────
+      // ── 1. Resolve raw fromAmount (already atomic units per API docs) ──────────
       let rawFromAmount: string;
       if (fromAmountOverride) {
         rawFromAmount = fromAmountOverride;
@@ -116,8 +147,40 @@ export const useWithdraw = () => {
         rawFromAmount = toRawAmount(position.balanceNative, decimals);
       }
 
+      const usdValue = Number(position.balanceUsd || '0');
+
+      // Sanity check A: if rawFromAmount implies a token amount > 10000x the USD value,
+      // the balanceNative field is corrupted → derive from balanceUsd.
+      const impliedTokens = Number(rawFromAmount) / 10 ** decimals;
+      if (usdValue > 0 && impliedTokens > usdValue * 10000) {
+        const safeDigits = Math.min(decimals, 6);
+        const safeAmount = parseUnits(
+          usdValue.toFixed(safeDigits) as `${number}`,
+          decimals,
+        ).toString();
+        rawFromAmount = safeAmount;
+        console.warn(
+          `[useWithdraw] balanceNative sanity check failed (implied ${impliedTokens.toFixed(2)} tokens for $${usdValue}). ` +
+          `Using USD-derived amount ${safeAmount} instead.`
+        );
+      }
+
+      // Sanity check B: if rawFromAmount is still 0 but we have a USD value,
+      // the API returned zero native balance → derive from USD (assume $1/token for stables)
+      if ((!rawFromAmount || rawFromAmount === '0') && usdValue > 0) {
+        const safeDigits = Math.min(decimals, 6);
+        rawFromAmount = parseUnits(
+          usdValue.toFixed(safeDigits) as `${number}`,
+          decimals,
+        ).toString();
+        console.warn(
+          `[useWithdraw] balanceNative is 0 but balanceUsd is $${usdValue}. ` +
+          `Deriving fromAmount=${rawFromAmount} from USD value.`
+        );
+      }
+
       if (!rawFromAmount || rawFromAmount === '0') {
-        throw new Error('No redeemable balance — position balance is zero');
+        throw new Error('This position has no redeemable balance. It may have already been fully withdrawn.');
       }
 
       // ── 2. Resolve vault receipt-token address ────────────────────────────────
@@ -133,7 +196,11 @@ export const useWithdraw = () => {
         fromToken.toLowerCase() === underlyingAddress.toLowerCase();
 
       if (sameAsUnderlying) {
-        const resolved = await resolveVaultAddress(position.chainId, underlyingAddress);
+        const resolved = await resolveVaultAddress(
+          position.chainId,
+          underlyingAddress,
+          position.protocolName,   // hint for faster API match
+        );
         if (resolved) {
           fromToken = resolved;
         } else {
@@ -196,11 +263,14 @@ export const useWithdraw = () => {
         acceptExchangeRateUpdateHook: async () => true,
       });
 
-      const isCompleted = finalRoute.steps.every(
-        step =>
-          step.execution?.status === 'DONE' &&
-          step.execution?.process?.every(p => p.status === 'DONE'),
-      );
+      // isCompleted: step-level DONE is the authoritative signal
+      const isCompleted = finalRoute.steps.every((step) => {
+        const stepDone = step.execution?.status === 'DONE';
+        const noFailures = (step.execution?.process ?? []).every(
+          (p) => p.status !== 'FAILED'
+        );
+        return stepDone && noFailures;
+      });
 
       if (isCompleted) {
         // Clean up optimistic deposit for this position

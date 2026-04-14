@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ArrowDownCircle, ExternalLink, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
+import { useAccount, useBalance } from 'wagmi';
 import { useWithdraw, type WithdrawStep } from '../hooks/useWithdraw';
 import type { PortfolioPosition } from '../types';
 
@@ -32,14 +33,43 @@ const WithdrawModal: React.FC<Props> = ({ position, onClose }) => {
 
   const chain = CHAIN_META[position.chainId] ?? { name: `Chain ${position.chainId}`, color: '#888', explorer: 'https://etherscan.io/tx/' };
   const usdValue = Number(position.balanceUsd) || 0;
-  const nativeAmt = position.balanceNative
-    ? (Number(position.balanceNative) / 10 ** (position.asset?.decimals || 18)).toFixed(6)
-    : '—';
+  const decimals = position.asset?.decimals || 18;
 
-  // Auto-quote the full position on open
+  // balanceNative is raw integer units per LI.FI docs (e.g. "1523450000" = 1523.45 USDC at 6 decimals)
+  // Sanity check: if derived token amount is > 1000x the USD value, the API data is corrupted.
+  // In that case, fall back to deriving the display amount from balanceUsd (assuming ~$1/token for stables).
+  const rawNative = Number(position.balanceNative ?? '0');
+  const derivedFromRaw = rawNative / 10 ** decimals;
+  const isSane = usdValue === 0 || (derivedFromRaw / Math.max(usdValue, 0.0001)) < 10000;
+  const nativeDisplay = isSane ? derivedFromRaw : usdValue; // safe fallback uses USD value
+  const nativeAmt = nativeDisplay > 0
+    ? nativeDisplay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })
+    : '0';
+
+  const { address } = useAccount();
+
+  // Fetch the actual on-chain vault SHARE token balance.
+  // This is critical: balanceNative from the portfolio API is the underlying-equivalent,
+  // NOT the vault share count. The LI.FI SDK needs fromAmount = share balance in raw units.
+  const hasVaultAddress = !!position.vaultAddress &&
+    position.vaultAddress.toLowerCase() !== position.asset?.address?.toLowerCase();
+
+  const { data: shareBalanceData, isLoading: shareBalanceLoading } = useBalance({
+    address,
+    token: hasVaultAddress ? (position.vaultAddress as `0x${string}`) : undefined,
+    chainId: position.chainId,
+    query: { enabled: !!address && hasVaultAddress },
+  });
+
+  const shareBalanceRaw = shareBalanceData?.value;
+  const hasZeroShareBalance = !shareBalanceLoading && hasVaultAddress && shareBalanceRaw !== undefined && shareBalanceRaw === 0n;
+
+  // Auto-quote the full position on open (pass on-chain share balance as override when available)
   useEffect(() => {
-    fetchQuote(position);
-  }, [fetchQuote, position]);
+    if (shareBalanceLoading) return; // wait for on-chain balance
+    const override = shareBalanceRaw && shareBalanceRaw > 0n ? shareBalanceRaw.toString() : undefined;
+    fetchQuote(position, override);
+  }, [fetchQuote, position, shareBalanceRaw, shareBalanceLoading]);
 
   const handleClose = useCallback(() => {
     reset();
@@ -133,7 +163,10 @@ const WithdrawModal: React.FC<Props> = ({ position, onClose }) => {
                 ${usdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
               <span style={{ fontSize: 13, color: '#888' }}>
-                {nativeAmt} {position.asset?.symbol}
+                {shareBalanceData
+                  ? Number(shareBalanceData.formatted).toLocaleString(undefined, { maximumFractionDigits: 6 })
+                  : nativeAmt
+                } {shareBalanceData?.symbol ?? position.asset?.symbol}
               </span>
             </div>
             {position.vaultName && (
@@ -143,12 +176,43 @@ const WithdrawModal: React.FC<Props> = ({ position, onClose }) => {
 
           {/* ── Main Body ── */}
           <div style={{ padding: '20px 24px' }}>
-            
+
+            {/* Waiting for on-chain share balance */}
+            {shareBalanceLoading && step === 'idle' && (
+              <div style={{ textAlign: 'center', padding: '24px 0', color: '#aaa' }}>
+                <Loader2 size={24} style={{ margin: '0 auto 10px', display: 'block', animation: 'spin 1s linear infinite' }} />
+                <div style={{ fontSize: 13 }}>Reading on-chain position…</div>
+              </div>
+            )}
+
+            {/* Zero share balance — position not redeemable via Composer */}
+            {hasZeroShareBalance && step !== 'success' && (
+              <div style={{
+                padding: 16, background: '#fffbeb', border: '1px solid #fcd34d',
+                borderRadius: 12, marginBottom: 16,
+              }}>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                  <AlertTriangle size={18} color="#d97706" style={{ flexShrink: 0, marginTop: 1 }} />
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: '#92400e', marginBottom: 4 }}>
+                      Position uses non-standard vault shares
+                    </div>
+                    <div style={{ fontSize: 12, color: '#78350f', lineHeight: 1.6 }}>
+                      Your wallet holds no on-chain receipt tokens for this position.
+                      This can happen with rebasing tokens or protocol-specific reward trackers.
+                      Please withdraw directly on the <strong>{position.protocolName}</strong> app.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Quote loading */}
             {step === 'quoting' && (
               <div style={{ textAlign: 'center', padding: '24px 0', color: '#aaa' }}>
-                <Loader2 size={28} style={{ margin: '0 auto 12px', animation: 'spin 1s linear infinite' }} />
-                <div style={{ fontSize: 14 }}>Fetching best withdrawal route…</div>
+                <Loader2 size={28} style={{ margin: '0 auto 12px', display: 'block', animation: 'spin 1s linear infinite' }} />
+                <div style={{ fontSize: 14 }}>Getting the best withdrawal route…</div>
+                <div style={{ fontSize: 11, marginTop: 6, opacity: 0.6 }}>Powered by LI.FI Composer</div>
               </div>
             )}
 
@@ -180,7 +244,7 @@ const WithdrawModal: React.FC<Props> = ({ position, onClose }) => {
                 </div>
 
                 <div style={{ fontSize: 11, color: '#bbb', marginBottom: 16, lineHeight: 1.5 }}>
-                  This will redeem your entire position and return the underlying tokens to your wallet. 
+                  This will redeem your entire position and return the underlying tokens to your wallet.
                   The route is powered by LI.FI's on-chain Earn infrastructure.
                 </div>
               </div>
@@ -214,7 +278,7 @@ const WithdrawModal: React.FC<Props> = ({ position, onClose }) => {
             {/* Success */}
             {step === 'success' && (
               <div style={{ textAlign: 'center', padding: '20px 0' }}>
-                <CheckCircle size={48} color="#00a65a" style={{ margin: '0 auto 12px' }} />
+                <CheckCircle size={48} color="#00a65a" style={{ margin: '0 auto 12px', display: 'block' }} />
                 <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 6 }}>Withdrawal Complete</div>
                 <div style={{ fontSize: 13, color: '#888', marginBottom: 16 }}>
                   Your funds have been returned to your wallet.
@@ -250,6 +314,12 @@ const WithdrawModal: React.FC<Props> = ({ position, onClose }) => {
                   <div style={{ fontSize: 12, color: '#b91c1c', lineHeight: 1.5 }}>
                     {error ?? 'Unknown error'}
                   </div>
+                  {(error?.includes('BalanceError') || error?.includes('balance is too low')) && (
+                    <div style={{ marginTop: 8, fontSize: 11, color: '#6b7280', lineHeight: 1.5 }}>
+                      💡 This position may use non-standard vault shares. Try withdrawing directly on the{' '}
+                      <strong>{position.protocolName}</strong> app.
+                    </div>
+                  )}
                 </div>
               </div>
             )}

@@ -61,12 +61,17 @@ const PositionRow: React.FC<{
   isLast: boolean;
   onWithdraw: (p: PortfolioPosition) => void;
 }> = ({ pos, isLast, onWithdraw }) => {
-  const chain   = CHAIN_META[pos.chainId] ?? { name: `Chain ${pos.chainId}`, color: '#888', explorer: 'https://etherscan.io' };
-  const usd     = Number(pos.balanceUsd) || 0;
-  const native  = pos.balanceNative
-    ? Number(pos.balanceNative) / 10 ** (pos.asset?.decimals ?? 18)
-    : null;
-  const apy     = typeof pos.apy === 'number' && pos.apy > 0 ? pos.apy : null;
+  const chain  = CHAIN_META[pos.chainId] ?? { name: `Chain ${pos.chainId}`, color: '#888', explorer: 'https://etherscan.io' };
+  const usd    = Number(pos.balanceUsd) || 0;
+  const apy    = typeof pos.apy === 'number' && pos.apy > 0 ? pos.apy : null;
+
+  // balanceNative is raw integer units (per LI.FI API docs).
+  // Sanity check: if it implies a token amount > 10000x the USD value, the data is corrupted.
+  const decimals = pos.asset?.decimals ?? 18;
+  const rawNative = Number(pos.balanceNative ?? '0');
+  const derivedFromRaw = rawNative / 10 ** decimals;
+  const isSane = usd === 0 || (derivedFromRaw / Math.max(usd, 0.0001)) < 10000;
+  const native = derivedFromRaw > 0 ? (isSane ? derivedFromRaw : usd) : null;
 
   return (
     <div

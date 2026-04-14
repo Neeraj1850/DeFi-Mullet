@@ -71,25 +71,28 @@ const DepositModal: React.FC<Props> = ({ vault, onClose }) => {
   const depositLabel = availableTokens.find(t => t.value === zapToken)?.label ?? 'tokens';
 
   // State Fetching logic strictly protected by address presence
-  const { data: targetTokenBalanceData } = useBalance({
+  const { data: targetTokenBalanceData, isLoading: loadingTargetToken } = useBalance({
     address,
     token: token?.address as `0x${string}`,
     chainId: vault.chainId,
     query: { enabled: !!address }
   });
 
-  const { data: targetNativeBalanceData } = useBalance({
+  const { data: targetNativeBalanceData, isLoading: loadingTargetNative } = useBalance({
     address,
     chainId: vault.chainId,
     query: { enabled: !!address }
   });
 
-  const { data: selectedZapBalanceData } = useBalance({
+  const { data: selectedZapBalanceData, isLoading: loadingZapBalance } = useBalance({
     address,
     chainId: chainId,
     token: zapTokenAddress,
     query: { enabled: !!address }
   });
+
+  // True until all three balance queries have at least one result
+  const isBalanceLoading = isConnected && (loadingTargetToken || loadingTargetNative || loadingZapBalance);
 
   // State Derivations Block
   const isWrongChain = isConnected && chainId !== vault.chainId;
@@ -107,12 +110,13 @@ const DepositModal: React.FC<Props> = ({ vault, onClose }) => {
   // ── Active balance (the token the user is actually spending) ──────────────
   // In normal mode  → underlying vault token (USDC, USDT, etc.) on the target chain
   // In zap mode     → whichever token the user selected in the ZapTokenSelector
-  const activeBalance  = isZapMode ? selectedZapBalance  : targetTokenBalance;
-  const activeDecimals = isZapMode ? zapDecimals         : (token?.decimals ?? 18);
-  const activeLabel    = isZapMode ? depositLabel        : (token?.symbol ?? 'tokens');
+  const activeBalance = isZapMode ? selectedZapBalance : targetTokenBalance;
+  const activeDecimals = isZapMode ? zapDecimals : (token?.decimals ?? 18);
+  const activeLabel = isZapMode ? depositLabel : (token?.symbol ?? 'tokens');
 
   // FIXED: hasNoBalance must reflect the token being spent, not always ETH
-  const hasNoBalance = isConnected && activeBalance === 0n;
+  // Also: only show "no balance" AFTER balances have loaded to prevent flicker
+  const hasNoBalance = isConnected && !isBalanceLoading && activeBalance === 0n;
 
   // FIXED: exceedsBalance must compare against the correct token's balance
   const exceedsBalance = !!amount && Number(amount) > Number(formatUnits(activeBalance, activeDecimals));
@@ -182,18 +186,49 @@ const DepositModal: React.FC<Props> = ({ vault, onClose }) => {
           )}
 
           {isConnected && hasNoBalance && (
-            <div className="omni-zap-banner" style={{ background: 'rgba(255, 50, 50, 0.1)', borderColor: 'rgba(255, 50, 50, 0.3)' }}>
+            <div className="omni-zap-banner" style={{ background: '#111', borderColor: 'rgba(255, 255, 255, 0.15)' }}>
               <div className="zap-header" style={{ color: 'var(--text-primary)' }}>
-                <span className="zap-icon">❌</span>
-                <strong>Insufficient Funds</strong>
+                <span className="zap-icon" style={{ filter: 'none' }}>⚠️</span>
+                <strong style={{ color: '#fff' }}>Insufficient Funds</strong>
               </div>
-              <p style={{ color: 'var(--text-secondary)' }}>
+              <p style={{ color: 'rgba(255,255,255,0.6)' }}>
                 You have no {activeLabel} on this network to deposit. Please load assets into your wallet to proceed.
               </p>
             </div>
           )}
 
-          {isConnected && !hasNoBalance && (
+          {/* ── Success: shown outside the hasNoBalance gate so it always renders ── */}
+          {isConnected && step === 'success' && (
+            <div className="deposit-success">
+              <div className="success-icon">
+                <svg viewBox="0 0 24 24" width="48" height="48" stroke="currentColor" strokeWidth="2" fill="none">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </div>
+              <h3>{isZapMode ? 'Zap Successful! 🛸' : 'Deposit Successful!'}</h3>
+              <p>Your assets are now earning yield in the <strong>{vault.protocol.name}</strong> vault.</p>
+              {(explorerUrl ?? txHash) && (
+                <a
+                  className="tx-link"
+                  style={{ marginTop: 16, display: 'block', textAlign: 'center' }}
+                  href={explorerUrl ?? (txHash ? `${explorer}${txHash}` : '')}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  View on Explorer →
+                </a>
+              )}
+              <button
+                className="btn-secondary"
+                onClick={onClose}
+                style={{ marginTop: 16, width: '100%' }}
+              >
+                Close
+              </button>
+            </div>
+          )}
+
+          {isConnected && step !== 'success' && (
             <>
               {(step === 'idle' || step === 'error') && (
                 <>
@@ -301,28 +336,8 @@ const DepositModal: React.FC<Props> = ({ vault, onClose }) => {
                 />
               )}
 
-              {step === 'success' && (
-                <div className="deposit-success">
-                  <div className="success-icon">
-                    <svg viewBox="0 0 24 24" width="48" height="48" stroke="currentColor" strokeWidth="2" fill="none">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  </div>
-                  <h3>Deposit Successful!</h3>
-                  <p>Your assets are now earning yield.</p>
-                  {(explorerUrl ?? txHash) && (
-                    <a
-                      className="tx-link"
-                      style={{ marginTop: 16, display: 'block', textAlign: 'center' }}
-                      href={explorerUrl ?? (txHash ? `${explorer}${txHash}` : '')}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      View on Explorer
-                    </a>
-                  )}
-                </div>
-              )}
+              {/* Old success block removed — now rendered above the hasNoBalance gate */}
+
             </>
           )}
 

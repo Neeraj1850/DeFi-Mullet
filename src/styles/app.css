@@ -1150,7 +1150,7 @@ h3,
   left: -50%;
   width: 200%;
   height: 200%;
-  background: radial-gradient(circle, rgba(0, 201, 122, 0.15) 0%, transparent 60%);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.03) 0%, transparent 60%);
   pointer-events: none;
 }
 
@@ -1191,9 +1191,10 @@ h3,
   position: absolute;
   inset: -1px;
   border-radius: 10px;
-  background: linear-gradient(45deg, var(--accent), transparent);
+  background: linear-gradient(45deg, rgba(0, 201, 122, 0.15), transparent);
   z-index: -1;
-  animation: fade-in 0.5s forwards;
+  opacity: 0;
+  animation: fade-in 0.8s 0.3s forwards;
 }
 
 .btn-zap {
@@ -1232,7 +1233,7 @@ h3,
   left: -50%;
   width: 200%;
   height: 200%;
-  background: radial-gradient(circle, rgba(0, 201, 122, 0.15) 0%, transparent 60%);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.03) 0%, transparent 60%);
   pointer-events: none;
 }
 
@@ -1273,9 +1274,10 @@ h3,
   position: absolute;
   inset: -1px;
   border-radius: 10px;
-  background: linear-gradient(45deg, var(--accent), transparent);
+  background: linear-gradient(45deg, rgba(0, 201, 122, 0.15), transparent);
   z-index: -1;
-  animation: fade-in 0.5s forwards;
+  opacity: 0;
+  animation: fade-in 0.8s 0.3s forwards;
 }
 
 .btn-zap {

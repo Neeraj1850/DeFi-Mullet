@@ -119,10 +119,15 @@ export const useDeposit = (vault: EarnVault | null) => {
         acceptExchangeRateUpdateHook: async () => true,
       });
 
-      // 6. isRouteFullyCompleted check
-      const isRouteCompleted = finalRoute.steps.every(
-        (step) => step.execution?.status === 'DONE' && step.execution?.process?.every((p) => p.status === 'DONE')
-      );
+      // isRouteCompleted: step-level DONE is the authoritative signal.
+      // Some SDK versions don't set process-level DONE for every sub-step.
+      const isRouteCompleted = finalRoute.steps.every((step) => {
+        const stepDone = step.execution?.status === 'DONE';
+        const noFailures = (step.execution?.process ?? []).every(
+          (p) => p.status !== 'FAILED'
+        );
+        return stepDone && noFailures;
+      });
 
       if (isRouteCompleted) {
         // Optimistic portfolio update
